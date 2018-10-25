@@ -307,7 +307,9 @@ namespace Leayal.ApplicationController
                         waiter.Unregister(waitHandle);
                     }
 
-                    // mutex.ReleaseMutex();
+                    // Is this required since the mutext is disposed and the instance is exited anyway?
+                    // Better safe than sorry.
+                    mutex.ReleaseMutex();
                 }
             }
         }
