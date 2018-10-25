@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <RootNamespace>Leayal.ApplicationController</RootNamespace>
+    <AssemblyName>Leayal.ApplicationController</AssemblyName>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <DocumentationFile>bin\Debug\Leayal.ApplicationController.xml</DocumentationFile>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <DocumentationFile>bin\Release\Leayal.ApplicationController.xml</DocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+	<Compile Include="..\Src\ApplicationBase.cs">
+      <Link>ApplicationBase.cs</Link>
+    </Compile> 
+	<Compile Include="..\Src\StartupEventArgs.cs">
+      <Link>StartupEventArgs.cs</Link>
+    </Compile> 
+    <Compile Remove="ApplicationController\**" />
+    <EmbeddedResource Remove="ApplicationController\**" />
+    <None Remove="ApplicationController\**" />
+  </ItemGroup>
+
+</Project>
