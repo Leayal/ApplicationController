@@ -279,7 +279,9 @@ namespace Leayal.ApplicationController
 
                                             waitHandle.Set();
                                             // wait until the reader finished get the args
-                                            argWaiter.WaitOne();
+                                            // May cause deadlock if the main instance fail to call Set(). So a timeout is required.
+                                            // 10-second is overkill but it's safe???
+                                            argWaiter.WaitOne(TimeSpan.FromSeconds(10));
                                         }
                                         else
                                         {
