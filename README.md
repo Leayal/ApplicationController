@@ -12,6 +12,7 @@ Provides a simple skeleton application to manage instances (Single-instance or m
   * The class use [Mutexes](https://docs.microsoft.com/en-us/dotnet/standard/threading/mutexes) to determine the first instance and subsequent instances.
 
 ## Example:
+See the live-action by compile and launch `Test` project, or use the example below:
 ```csharp
 using System;
 using Leayal.ApplicationController;
