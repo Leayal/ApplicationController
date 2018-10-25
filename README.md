@@ -1,5 +1,7 @@
 # Application controller
 Provides a simple skeleton application to manage instances (Single-instance or multi-instance, support command-line).
+It's here because of the `It's not worth to include the whole System.VisualBasic reference just for single-instance application` reason.
+It's not bug-free, though.
 
 ## Caveat
 * The method executing order is different from [Microsoft.VisualBasic.ApplicationServices.WindowsFormsApplicationBase](https://docs.microsoft.com/en-us/dotnet/api/microsoft.visualbasic.applicationservices.windowsformsapplicationbase?view=netframework-4.0). The order of this class is:
