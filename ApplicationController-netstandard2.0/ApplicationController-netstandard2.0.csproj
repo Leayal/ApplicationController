@@ -4,6 +4,7 @@
     <TargetFramework>netstandard2.0</TargetFramework>
     <RootNamespace>Leayal.ApplicationController</RootNamespace>
     <AssemblyName>Leayal.ApplicationController</AssemblyName>
+    <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
@@ -18,9 +19,12 @@
 	<Compile Include="..\Src\ApplicationBase.cs">
       <Link>ApplicationBase.cs</Link>
     </Compile> 
-	<Compile Include="..\Src\StartupEventArgs.cs">
-      <Link>StartupEventArgs.cs</Link>
-    </Compile> 
+	<Compile Include="..\Src\EventArgs.cs">
+      <Link>EventArgs.cs</Link>
+    </Compile>
+	<Compile Include="..\Src\SubsequentProcessPacket.cs">
+      <Link>SubsequentProcessPacket.cs</Link>
+    </Compile>
     <Compile Remove="ApplicationController\**" />
     <EmbeddedResource Remove="ApplicationController\**" />
     <None Remove="ApplicationController\**" />

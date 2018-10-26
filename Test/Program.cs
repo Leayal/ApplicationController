@@ -13,7 +13,7 @@ namespace Test
 
         class Controller : ApplicationBase
         {
-            public Controller() : base(true)
+            public Controller() : base("My-Unique-ID")
             {
                 
             }

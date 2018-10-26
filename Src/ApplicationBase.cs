@@ -18,8 +18,6 @@ namespace Leayal.ApplicationController
     /// </remarks>
     public abstract class ApplicationBase
     {
-        const int MAX_SUPPORTED_ARGUMENT_LENGTH = 32767;
-
         private bool _isRunning;
         private string _instanceID;
 
@@ -51,6 +49,10 @@ namespace Leayal.ApplicationController
         /// <summary>
         /// Initializes a new instance of the <see cref="ApplicationBase"/> class with <see cref="ApplicationBase.IsSingleInstance"/> is false.
         /// </summary>
+#if NETSTANDARD2_0
+        /// <exception cref="InvalidOperationException">Cannot generate unique ID from assembly's GUID. Mainly because the GUID cannot be found.</exception>
+        [Obsolete("You should not use this. Auto-generate unique ID from assembly's information is not working well and may throw exception.", false)]
+#endif
         protected ApplicationBase() : this(false) { }
 
         /// <summary>
@@ -155,7 +157,8 @@ namespace Leayal.ApplicationController
 
         private void CreateSingleInstanceModel(string[] args)
         {
-            int maxWritingLength = (MAX_SUPPORTED_ARGUMENT_LENGTH + 8 + 36) * 2;
+            SubsequentProcessPacket packetHolder = new SubsequentProcessPacket();
+            byte[] dummypacket = packetHolder.BuildPacket();
             using (Mutex mutex = new Mutex(true, Path.Combine("Global", this._instanceID), out var isNewInstanceJustForMeHuh))
             using (EventWaitHandle waitHandle = new EventWaitHandle(false, EventResetMode.AutoReset, this._instanceID))
             {
@@ -164,70 +167,61 @@ namespace Leayal.ApplicationController
                 {
                     if (isNewInstanceJustForMeHuh)
                     {
-                        using (MemoryMappedFile mmf = MemoryMappedFile.CreateNew(this._instanceID + "-args", maxWritingLength, MemoryMappedFileAccess.ReadWrite))
+                        using (MemoryMappedFile mmf = MemoryMappedFile.CreateNew(this._instanceID + "-args", dummypacket.Length, MemoryMappedFileAccess.ReadWrite))
                         {
                             waiter = ThreadPool.RegisterWaitForSingleObject(waitHandle, new WaitOrTimerCallback((sender, signal) =>
                             {
-                                using (BinaryReader br = new BinaryReader(mmf.CreateViewStream(0, maxWritingLength), System.Text.Encoding.Unicode))
+                                using (var stream = mmf.CreateViewStream(0, dummypacket.Length))
                                 {
-                                    int guidIDLength = br.ReadInt32();
-                                    if (guidIDLength != 0)
+                                    var packet = SubsequentProcessPacket.FromStream(stream);
+                                    string[] theArgs = new string[packet.ArgumentCount];
+
+                                    try
                                     {
-                                        Guid argWaiterGUID = new Guid(br.ReadBytes(guidIDLength));
-
-                                        int arrayCount = br.ReadInt32();
-                                        string[] theArgs = new string[arrayCount];
-                                        for (int i = 0; i < arrayCount; i++)
+                                        if (packet.ArgumentCount != 0)
                                         {
-                                            theArgs[i] = br.ReadString();
-                                        }
-
-                                        try
-                                        {
-                                            this.OnStartupNextInstance(new StartupNextInstanceEventArgs(theArgs));
-                                        }
-                                        catch
-                                        {
-                                            if (System.Diagnostics.Debugger.IsAttached)
-                                            {
-                                                throw;
-                                            }
-                                        }
-                                        finally
-                                        {
-#if NETSTANDARD2_0
-                                            if (EventWaitHandle.TryOpenExisting(this._instanceID + "-argreader" + argWaiterGUID.ToString(), out EventWaitHandle argWaiter))
+                                            string readerIDstring = packet.SharedID.ToString();
+                                            if (EventWaitHandle_TryOpenExisting(this._instanceID + "-argreader" + readerIDstring, out var argWaiter))
                                             {
                                                 using (argWaiter)
+                                                using (MemoryMappedFile argdata = MemoryMappedFile.OpenExisting(this._instanceID + "-argdata" + readerIDstring, MemoryMappedFileRights.Read))
+                                                using (BinaryReader br = new BinaryReader(argdata.CreateViewStream(0, packet.DataLength, MemoryMappedFileAccess.Read)))
                                                 {
-                                                    argWaiter.Set();
+                                                    try
+                                                    {
+                                                        int biggerbuffer = br.ReadInt32();
+                                                        byte[] buffer = new byte[biggerbuffer];
+
+                                                        for (int i = 0; i < theArgs.Length; i++)
+                                                        {
+                                                            int bufferlength = br.ReadInt32();
+                                                            br.Read(buffer, 0, bufferlength);
+                                                            theArgs[i] = System.Text.Encoding.Unicode.GetString(buffer, 0, bufferlength);
+                                                        }
+                                                    }
+                                                    finally
+                                                    {
+                                                        argWaiter.Set();
+                                                    }
                                                 }
                                             }
-#else
-                                            try
+                                            else
                                             {
-                                                using (EventWaitHandle argWaiter = EventWaitHandle.OpenExisting(this._instanceID + "-argreader" + argWaiterGUID.ToString()))
-                                                {
-                                                    argWaiter.Set();
-                                                }
+                                                throw new Exception("............!!!???");
                                             }
-                                            catch { }
-#endif
                                         }
+
+                                        this.OnStartupNextInstance(new StartupNextInstanceEventArgs(theArgs));
                                     }
-                                    else
+                                    catch (Exception ex)
                                     {
-                                        // Throw error or should be silently failed?
-                                        try
+                                        if (System.Diagnostics.Debugger.IsAttached)
                                         {
-                                            this.OnStartupNextInstance(new StartupNextInstanceEventArgs(new Exception("Failed to fetch args")));
+                                            throw;
                                         }
-                                        catch
+                                        else
                                         {
-                                            if (System.Diagnostics.Debugger.IsAttached)
-                                            {
-                                                throw;
-                                            }
+                                            this.OnStartupNextInstance(new StartupNextInstanceEventArgs(ex));
                                         }
                                     }
                                 }
@@ -241,62 +235,89 @@ namespace Leayal.ApplicationController
                     {
                         Guid readerID = Guid.NewGuid();
                         using (Mutex writerMutex = new Mutex(true, Path.Combine("Global", this._instanceID + "-argwriter"), out var isNewWriterMutex))
-                        using (EventWaitHandle argWaiter = new EventWaitHandle(false, EventResetMode.ManualReset, this._instanceID + "-argreader" + readerID.ToString(), out var newInstanceForArgs))
                         {
                             if (!isNewWriterMutex)
                             {
                                 while (!writerMutex.WaitOne()) { }
                             }
-                            if (newInstanceForArgs)
+                            using (MemoryMappedFile mmf = MemoryMappedFile.OpenExisting(this._instanceID + "-args", MemoryMappedFileRights.Write))
+                            using (var accessor = mmf.CreateViewStream(0, dummypacket.Length, MemoryMappedFileAccess.Write))
                             {
-                                using (MemoryMappedFile mmf = MemoryMappedFile.OpenExisting(this._instanceID + "-args", MemoryMappedFileRights.Write))
-                                using (var accessor = mmf.CreateViewAccessor(0, maxWritingLength))
+                                try
                                 {
-                                    try
+                                    if (args.Length == 0)
                                     {
-                                        byte[] buffer = new byte[maxWritingLength];
-                                        MemoryStream memStream = new MemoryStream(buffer, true);
-                                        memStream.Position = 0;
-                                        BinaryWriter bw = new BinaryWriter(memStream, System.Text.Encoding.Unicode);
-
-                                        var guidBuffer = readerID.ToByteArray();
-
-                                        bw.Write(guidBuffer.Length);
-                                        bw.Write(guidBuffer);
-
-                                        bw.Write(args.Length);
-                                        for (int i = 0; i < args.Length; i++)
-                                        {
-                                            bw.Write(args[i]);
-                                        }
-
-                                        if (memStream.Position <= maxWritingLength)
-                                        {
-                                            for (int i = 0; i < buffer.Length; i++)
-                                            {
-                                                accessor.Write(i, buffer[i]);
-                                            }
-
-                                            waitHandle.Set();
-                                            // wait until the reader finished get the args
-                                            // May cause deadlock if the main instance fail to call Set(). So a timeout is required.
-                                            // 10-second is overkill but it's safe???
-                                            argWaiter.WaitOne(TimeSpan.FromSeconds(10));
-                                        }
-                                        else
-                                        {
-                                            accessor.Write(0, 0);
-                                            waitHandle.Set();
-                                        }
-                                    }
-                                    catch
-                                    {
-                                        accessor.Write(0, 0);
+                                        accessor.Write(dummypacket, 0, dummypacket.Length);
                                         waitHandle.Set();
                                     }
+                                    else
+                                    {
+                                        int sizeofInt = sizeof(int);
+                                        int biggestSize = 0;
+                                        long datasize = (args.Length * sizeofInt) + sizeofInt;
+                                        for (int i = 0; i < args.Length; i++)
+                                        {
+                                            int aaaaaa = System.Text.Encoding.Unicode.GetByteCount(args[i]);
+                                            if (biggestSize < aaaaaa)
+                                                biggestSize = aaaaaa;
+                                            datasize += aaaaaa;
+                                        }
+
+                                        packetHolder.ArgumentCount = args.Length;
+                                        packetHolder.IsMemorySharing = true;
+                                        packetHolder.SharedID = readerID;
+                                        packetHolder.DataLength = datasize;
+
+                                        using (MemoryMappedFile argData = MemoryMappedFile.CreateNew(this._instanceID + "-argdata" + readerID.ToString(), datasize, MemoryMappedFileAccess.ReadWrite))
+                                        using (EventWaitHandle argWaiter = new EventWaitHandle(false, EventResetMode.ManualReset, this._instanceID + "-argreader" + readerID.ToString(), out var newInstanceForArgs))
+                                        {
+                                            if (newInstanceForArgs)
+                                            {
+                                                using (var datastream = argData.CreateViewStream(0, datasize, MemoryMappedFileAccess.Write))
+                                                {
+                                                    byte[] stringbuffer = new byte[biggestSize];
+                                                    byte[] huh = BitConverter.GetBytes(biggestSize);
+
+                                                    datastream.Write(huh, 0, huh.Length);
+
+                                                    for (int i = 0; i < args.Length; i++)
+                                                    {
+                                                        int encodedbytelength = System.Text.Encoding.Unicode.GetBytes(args[i], 0, args[i].Length, stringbuffer, 0);
+                                                        huh = BitConverter.GetBytes(encodedbytelength);
+
+                                                        datastream.Write(huh, 0, huh.Length);
+                                                        datastream.Write(stringbuffer, 0, encodedbytelength);
+                                                    }
+                                                }
+
+                                                byte[] buffer = packetHolder.BuildPacket();
+                                                accessor.Write(buffer, 0, buffer.Length);
+
+                                                waitHandle.Set();
+                                                // wait until the reader finished get the args
+                                                // May cause deadlock if the main instance fail to call Set(). So a timeout is required.
+                                                // 10-second is overkill but it's safe???
+                                                argWaiter.WaitOne(TimeSpan.FromSeconds(10));
+                                            }
+                                            else
+                                            {
+                                                // 
+                                                throw new Exception();
+                                            }
+                                        }
+                                    }
+                                }
+                                catch
+                                {
+                                    accessor.Write(dummypacket, 0, dummypacket.Length);
+                                    waitHandle.Set();
                                 }
                             }
-                            writerMutex.ReleaseMutex();
+
+                            if (isNewWriterMutex)
+                            {
+                                writerMutex.ReleaseMutex();
+                            }
                         }
                     }
                 }
@@ -309,9 +330,30 @@ namespace Leayal.ApplicationController
 
                     // Is this required since the mutext is disposed and the instance is exited anyway?
                     // Better safe than sorry.
-                    mutex.ReleaseMutex();
+                    if (isNewInstanceJustForMeHuh)
+                    {
+                        mutex.ReleaseMutex();
+                    }
                 }
             }
+        }
+
+        private static bool EventWaitHandle_TryOpenExisting(string name, out EventWaitHandle waithandle)
+        {
+#if NETSTANDARD2_0
+            return EventWaitHandle.TryOpenExisting(name, out waithandle);
+#else
+            try
+            {
+                waithandle = EventWaitHandle.OpenExisting(name);
+                return true;
+            }
+            catch
+            {
+                waithandle = default;
+                return false;
+            }
+#endif
         }
 
         private string GetApplicationID()
