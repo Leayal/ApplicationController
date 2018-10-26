@@ -48,9 +48,7 @@ namespace Leayal.ApplicationController
 
 
 #if NETSTANDARD2_0
-        /// <summary>
-        /// Initializes a new instance of the <see cref="ApplicationBase"/> class with <see cref="ApplicationBase.IsSingleInstance"/> is false.
-        /// </summary>
+        /// <summary>Initializes a new instance of the <see cref="ApplicationBase"/> class with <see cref="ApplicationBase.IsSingleInstance"/> is false</summary>
         /// <exception cref="InvalidOperationException">Cannot generate unique ID from assembly's GUID. Mainly because the GUID cannot be found.</exception>
         [Obsolete("You should not use this. Auto-generate unique ID from assembly's information is not working well and may throw exception.", false)]
         protected ApplicationBase() : this(false) { }
@@ -61,24 +59,22 @@ namespace Leayal.ApplicationController
         protected ApplicationBase() : this(false) { }
 #endif
 
-        /// <summary>
-        /// Initializes a new instance of the <see cref="ApplicationBase"/> class.
-        /// </summary>
+#if NETSTANDARD2_0
+        /// <summary>Initializes a new instance of the <see cref="ApplicationBase"/> class</summary>
         /// <param name="isSingleInstance">Determine whether the application is in single-instance model.</param>
-        /// <exception cref="InvalidOperationException">
-        /// Happens when <paramref name="isSingleInstance"/> is true and the application cannot generate unique ID from the calling assembly.
-        /// </exception>
+        /// <exception cref="InvalidOperationException">Happens when <paramref name="isSingleInstance"/> is true and the application cannot generate unique ID from the calling assembly</exception>
         protected ApplicationBase(bool isSingleInstance) : this(isSingleInstance, null) { }
+#else
+        /// <summary>Initializes a new instance of the <see cref="ApplicationBase"/> class</summary>
+        protected ApplicationBase(bool isSingleInstance) : this(isSingleInstance, null) { }
+#endif
 
-        /// <summary>
-        /// Initializes a new instance of the <see cref="ApplicationBase"/> class in single-instance model with given instanceID.
-        /// </summary>
+        /// <summary>Initializes a new instance of the <see cref="ApplicationBase"/> class in single-instance model with given instanceID</summary>
         /// <param name="instanceID">The unique ID for the application to check for</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="instanceID"/> is longer than 260 characters</exception>
         protected ApplicationBase(string instanceID) : this(true, instanceID) { }
 
-        /// <summary>
-        /// Nope. Don't even use System.Reflection to invoke this method, please.
-        /// </summary>
+        /// <summary>Nope. Don't even use System.Reflection to invoke this method, please.</summary>
         /// <param name="isSingleInstance"></param>
         /// <param name="instanceID"></param>
         private ApplicationBase(bool isSingleInstance, string instanceID)
@@ -91,7 +87,7 @@ namespace Leayal.ApplicationController
                 }
                 else if (instanceID.Length > 260)
                 {
-                    throw new PathTooLongException("The given instance ID is longer than 260 characters");
+                    throw new ArgumentOutOfRangeException("The given instance ID is longer than 260 characters");
                 }
                 this.SetSingleInstanceID(instanceID);
             }
@@ -101,9 +97,7 @@ namespace Leayal.ApplicationController
             }
         }
 
-        /// <summary>
-        /// Sets up and starts the application model with command-line arguments from <see cref="Environment.GetCommandLineArgs"/>.
-        /// </summary>
+        /// <summary>Sets up and starts the application model with command-line arguments from <see cref="Environment.GetCommandLineArgs"/></summary>
         public void Run()
         {
             List<string> tmp = new List<string>(Environment.GetCommandLineArgs());
@@ -115,9 +109,7 @@ namespace Leayal.ApplicationController
             args = null;
         }
 
-        /// <summary>
-        /// Sets up and starts the application model with given command-line arguments.
-        /// </summary>
+        /// <summary>Sets up and starts the application model with given command-line arguments</summary>
         /// <param name="args">The command-line arguments</param>
         public void Run(string[] args)
         {
@@ -195,8 +187,8 @@ namespace Leayal.ApplicationController
                                                 {
                                                     try
                                                     {
-                                                        int biggerbuffer = br.ReadInt32();
-                                                        byte[] buffer = new byte[biggerbuffer];
+                                                        int biggestbuffer = br.ReadInt32();
+                                                        byte[] buffer = new byte[biggestbuffer];
 
                                                         for (int i = 0; i < theArgs.Length; i++)
                                                         {
@@ -259,6 +251,7 @@ namespace Leayal.ApplicationController
                                     else
                                     {
                                         int sizeofInt = sizeof(int);
+                                        // Ensure that the buffer will never be below 4-byte integer so that we can use the buffer for the int->byte conversion.
                                         int biggestSize = 0;
                                         long datasize = (args.Length * sizeofInt) + sizeofInt;
                                         for (int i = 0; i < args.Length; i++)
@@ -268,6 +261,8 @@ namespace Leayal.ApplicationController
                                                 biggestSize = aaaaaa;
                                             datasize += aaaaaa;
                                         }
+
+                                        biggestSize += sizeofInt;
 
                                         packetHolder.ArgumentCount = args.Length;
                                         packetHolder.IsMemorySharing = true;
@@ -279,26 +274,27 @@ namespace Leayal.ApplicationController
                                         {
                                             if (newInstanceForArgs)
                                             {
+                                                byte[] buffer = new byte[biggestSize];
                                                 using (var datastream = argData.CreateViewStream(0, datasize, MemoryMappedFileAccess.Write))
                                                 {
-                                                    byte[] stringbuffer = new byte[biggestSize];
-                                                    byte[] huh = BitConverter.GetBytes(biggestSize);
+                                                    GetBytesFromIntToBuffer(biggestSize, buffer, 0);
 
-                                                    datastream.Write(huh, 0, huh.Length);
+                                                    datastream.Write(buffer, 0, sizeofInt);
 
                                                     for (int i = 0; i < args.Length; i++)
                                                     {
-                                                        int encodedbytelength = System.Text.Encoding.Unicode.GetBytes(args[i], 0, args[i].Length, stringbuffer, 0);
-                                                        huh = BitConverter.GetBytes(encodedbytelength);
+                                                        int encodedbytelength = System.Text.Encoding.Unicode.GetBytes(args[i], 0, args[i].Length, buffer, sizeofInt);
+                                                        GetBytesFromIntToBuffer(encodedbytelength, buffer, 0);
 
-                                                        datastream.Write(huh, 0, huh.Length);
-                                                        datastream.Write(stringbuffer, 0, encodedbytelength);
+                                                        datastream.Write(buffer, 0, encodedbytelength + sizeofInt);
                                                     }
+
+                                                    datastream.Flush();
                                                 }
 
-                                                byte[] buffer = packetHolder.BuildPacket();
-                                                accessor.Write(buffer, 0, buffer.Length);
-
+                                                int packetsize = packetHolder.BuildPacket(buffer, 0);
+                                                accessor.Write(buffer, 0, packetsize);
+                                                buffer = null;
                                                 waitHandle.Set();
                                                 // wait until the reader finished get the args
                                                 // May cause deadlock if the main instance fail to call Set(). So a timeout is required.
@@ -388,6 +384,17 @@ namespace Leayal.ApplicationController
         {
             if (this._isRunning)
                 throw new InvalidOperationException("Cannot change property while the application is running.");
+        }
+
+        internal static void GetBytesFromIntToBuffer(int value, byte[] buffer, int offset)
+        {
+            unsafe
+            {
+                fixed (byte* b = buffer)
+                {
+                    *((int*)(b + offset)) = value;
+                }
+            }
         }
     }
 }

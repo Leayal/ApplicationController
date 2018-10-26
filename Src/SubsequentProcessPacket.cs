@@ -50,6 +50,36 @@ namespace Leayal.ApplicationController
             this.DataLength = dataLength;
         }
 
+        public int BuildPacket(byte[] buffer, int offset)
+        {
+            int sizeofInt = sizeof(int),
+               sizeofBool = sizeof(bool),
+               sizeofLong = sizeof(long);
+            byte[] sharediddata = SharedID.ToByteArray();
+            int packetsize = sizeofInt + sizeofBool + sharediddata.Length + sizeofLong;
+
+            if (buffer.Length < packetsize)
+            {
+                throw new ArgumentException($"Buffer size must have at least {packetsize}-byte");
+            }
+
+            var handle = GCHandle.Alloc(buffer, GCHandleType.Pinned);
+            try
+            {
+                Marshal.WriteInt32(handle.AddrOfPinnedObject(), offset, this.ArgumentCount);
+                Marshal.WriteByte(handle.AddrOfPinnedObject(), offset + sizeofInt, this.IsMemorySharing ? (byte)1 : (byte)0);
+                Buffer.BlockCopy(sharediddata, 0, buffer, offset + sizeofInt + sizeofBool, sharediddata.Length);
+                Marshal.WriteInt64(handle.AddrOfPinnedObject(), offset + sizeofInt + sizeofBool + sharediddata.Length, this.DataLength);
+            }
+            finally
+            {
+                if (handle.IsAllocated)
+                    handle.Free();
+            }
+
+            return packetsize;
+        }
+
         public byte[] BuildPacket()
         {
             int sizeofInt = sizeof(int),
