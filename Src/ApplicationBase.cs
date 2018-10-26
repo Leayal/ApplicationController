@@ -46,14 +46,20 @@ namespace Leayal.ApplicationController
             return this._instanceID + "-arg-reader" + guid.ToString();
         }
 
+
+#if NETSTANDARD2_0
         /// <summary>
         /// Initializes a new instance of the <see cref="ApplicationBase"/> class with <see cref="ApplicationBase.IsSingleInstance"/> is false.
         /// </summary>
-#if NETSTANDARD2_0
         /// <exception cref="InvalidOperationException">Cannot generate unique ID from assembly's GUID. Mainly because the GUID cannot be found.</exception>
         [Obsolete("You should not use this. Auto-generate unique ID from assembly's information is not working well and may throw exception.", false)]
-#endif
         protected ApplicationBase() : this(false) { }
+#else
+        /// <summary>
+        /// Initializes a new instance of the <see cref="ApplicationBase"/> class with <see cref="ApplicationBase.IsSingleInstance"/> is false.
+        /// </summary>
+        protected ApplicationBase() : this(false) { }
+#endif
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ApplicationBase"/> class.
