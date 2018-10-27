@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>netcoreapp2.0</TargetFramework>
+    <RootNamespace>Test_DotNetCore</RootNamespace>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <ProjectReference Include="..\..\Src\ApplicationController-netstandard2.0\ApplicationController-netstandard2.0.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Program.cs" />
+  </ItemGroup>
+
+</Project>

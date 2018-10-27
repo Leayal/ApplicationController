@@ -85,9 +85,9 @@ namespace Leayal.ApplicationController
                 {
                     instanceID = this.GetApplicationID();
                 }
-                else if (instanceID.Length > 260)
+                else if (instanceID.Length > 200)
                 {
-                    throw new ArgumentOutOfRangeException("The given instance ID is longer than 260 characters");
+                    throw new ArgumentOutOfRangeException("The given instance ID is longer than 200 characters");
                 }
                 this.SetSingleInstanceID(instanceID);
             }
@@ -174,56 +174,49 @@ namespace Leayal.ApplicationController
                                     var packet = SubsequentProcessPacket.FromStream(stream);
                                     string[] theArgs = new string[packet.ArgumentCount];
 
-                                    try
+                                    string readerIDstring = packet.SharedID.ToString();
+                                    if (EventWaitHandle_TryOpenExisting(this._instanceID + "-argreader" + readerIDstring, out var argWaiter))
                                     {
-                                        if (packet.ArgumentCount != 0)
+                                        try
                                         {
-                                            string readerIDstring = packet.SharedID.ToString();
-                                            if (EventWaitHandle_TryOpenExisting(this._instanceID + "-argreader" + readerIDstring, out var argWaiter))
+                                            if (packet.ArgumentCount != 0)
                                             {
-                                                using (argWaiter)
                                                 using (MemoryMappedFile argdata = MemoryMappedFile.OpenExisting(this._instanceID + "-argdata" + readerIDstring, MemoryMappedFileRights.Read))
                                                 using (BinaryReader br = new BinaryReader(argdata.CreateViewStream(0, packet.DataLength, MemoryMappedFileAccess.Read)))
                                                 {
-                                                    try
-                                                    {
-                                                        int biggestbuffer = br.ReadInt32();
-                                                        byte[] buffer = new byte[biggestbuffer];
+                                                    int biggestbuffer = br.ReadInt32();
+                                                    byte[] buffer = new byte[biggestbuffer];
 
-                                                        for (int i = 0; i < theArgs.Length; i++)
-                                                        {
-                                                            int bufferlength = br.ReadInt32();
-                                                            br.Read(buffer, 0, bufferlength);
-                                                            theArgs[i] = System.Text.Encoding.Unicode.GetString(buffer, 0, bufferlength);
-                                                        }
-                                                    }
-                                                    finally
+                                                    for (int i = 0; i < theArgs.Length; i++)
                                                     {
-                                                        argWaiter.Set();
+                                                        int bufferlength = br.ReadInt32();
+                                                        br.Read(buffer, 0, bufferlength);
+                                                        theArgs[i] = System.Text.Encoding.Unicode.GetString(buffer, 0, bufferlength);
                                                     }
                                                 }
                                             }
+
+                                            this.OnStartupNextInstance(new StartupNextInstanceEventArgs(theArgs));
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                            if (System.Diagnostics.Debugger.IsAttached)
+                                            {
+                                                throw;
+                                            }
                                             else
                                             {
-                                                throw new Exception("............!!!???");
+                                                this.OnStartupNextInstance(new StartupNextInstanceEventArgs(ex));
                                             }
                                         }
-
-                                        this.OnStartupNextInstance(new StartupNextInstanceEventArgs(theArgs));
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        if (System.Diagnostics.Debugger.IsAttached)
+                                        finally
                                         {
-                                            throw;
-                                        }
-                                        else
-                                        {
-                                            this.OnStartupNextInstance(new StartupNextInstanceEventArgs(ex));
+                                            argWaiter.Set();
+                                            argWaiter.Dispose();
                                         }
                                     }
                                 }
-                                //this._instanceID + "-argreader" + readerID
+                                // this._instanceID + "-argreader" + readerID
                                 // this.OnStartupNextInstance(e);
                             }), null, -1, false);
                             this.OnStartup(new StartupEventArgs(args));
@@ -245,8 +238,30 @@ namespace Leayal.ApplicationController
                                 {
                                     if (args.Length == 0)
                                     {
-                                        accessor.Write(dummypacket, 0, dummypacket.Length);
-                                        waitHandle.Set();
+                                        using (EventWaitHandle argWaiter = new EventWaitHandle(false, EventResetMode.ManualReset, this._instanceID + "-argreader" + readerID.ToString(), out var newInstanceForArgs))
+                                        {
+                                            if (newInstanceForArgs)
+                                            {
+                                                packetHolder.ArgumentCount = args.Length;
+                                                packetHolder.IsMemorySharing = true;
+                                                packetHolder.SharedID = readerID;
+                                                packetHolder.DataLength = 0;
+
+                                                int size = packetHolder.BuildPacket(dummypacket, 0);
+
+                                                accessor.Write(dummypacket, 0, size);
+                                                waitHandle.Set();
+                                                // wait until the reader finished get the args
+                                                // May cause deadlock if the main instance fail to call Set(). So a timeout is required.
+                                                // 10-second is overkill but it's safe???
+                                                argWaiter.WaitOne(TimeSpan.FromSeconds(10));
+                                            }
+                                            else
+                                            {
+                                                accessor.Write(dummypacket, 0, dummypacket.Length);
+                                                waitHandle.Set();
+                                            }
+                                        }
                                     }
                                     else
                                     {
@@ -263,6 +278,8 @@ namespace Leayal.ApplicationController
                                         }
 
                                         biggestSize += sizeofInt;
+                                        if (biggestSize < dummypacket.Length)
+                                            biggestSize = dummypacket.Length;
 
                                         packetHolder.ArgumentCount = args.Length;
                                         packetHolder.IsMemorySharing = true;
@@ -313,6 +330,11 @@ namespace Leayal.ApplicationController
                                 {
                                     accessor.Write(dummypacket, 0, dummypacket.Length);
                                     waitHandle.Set();
+
+                                    if (System.Diagnostics.Debugger.IsAttached)
+                                    {
+                                        throw;
+                                    }
                                 }
                             }
 
@@ -327,7 +349,7 @@ namespace Leayal.ApplicationController
                 {
                     if (waiter != null)
                     {
-                        waiter.Unregister(waitHandle);
+                        waiter.Unregister(null);
                     }
 
                     // Is this required since the mutext is disposed and the instance is exited anyway?
@@ -395,6 +417,21 @@ namespace Leayal.ApplicationController
                     *((int*)(b + offset)) = value;
                 }
             }
+        }
+
+        /// <summary>Determines whether the specified object is a derived of <see cref="ApplicationBase"/> and has the same unique ID.</summary>
+        /// <param name="obj">The object to compare with the current object.</param>
+        /// <returns>true if the specified object is a derived of <see cref="ApplicationBase"/> and has the same unique ID; otherwise, false.</returns>
+        public override bool Equals(object obj)
+        {
+            if (string.IsNullOrEmpty(this._instanceID))
+                return false;
+
+            if (obj is ApplicationBase application)
+            {
+                return (this._instanceID == application._instanceID);
+            }
+            return false;
         }
     }
 }

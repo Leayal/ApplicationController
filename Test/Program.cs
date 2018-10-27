@@ -13,14 +13,23 @@ namespace Test
 
         class Controller : ApplicationBase
         {
-            public Controller() : base("My-Unique-ID")
-            {
-                
-            }
+#if NETCOREAPP1_0 || NETCOREAPP1_1 || NETCOREAPP2_0 || NETCOREAPP2_1
+            public Controller() : base("My-Unique-ID") { }
+#else
+            public Controller() : base(true) { }
+#endif
 
             protected override void OnStartup(StartupEventArgs e)
             {
-                Console.WriteLine("Main instance. Waiting for next instance args.");
+                if (e.Arguments.Count == 0)
+                {
+                    Console.WriteLine("Main instance. Launched without args.");
+                }
+                else
+                {
+                    Console.WriteLine("Main instance. Launched with args: " + string.Join(";", e.Arguments));
+                }
+                Console.WriteLine("Waiting for subsequent instance args. Press any key to exit.");
                 Console.ReadKey();
             }
 
@@ -32,7 +41,14 @@ namespace Test
                 }
                 else
                 {
-                    Console.WriteLine("Args: " + string.Join(";", e.Arguments));
+                    if (e.Arguments.Count == 0)
+                    {
+                        Console.WriteLine("Subsequent Process launched without args.");
+                    }
+                    else
+                    {
+                        Console.WriteLine("Subsequent Process launched with args: " + string.Join(";", e.Arguments));
+                    }
                 }
             }
         }

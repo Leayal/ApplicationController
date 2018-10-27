@@ -18,13 +18,13 @@
   </PropertyGroup>
 
   <ItemGroup>
-	<Compile Include="..\Src\ApplicationBase.cs">
+	<Compile Include="..\ApplicationBase.cs">
       <Link>ApplicationBase.cs</Link>
     </Compile> 
-	<Compile Include="..\Src\EventArgs.cs">
+	<Compile Include="..\EventArgs.cs">
       <Link>EventArgs.cs</Link>
     </Compile>
-	<Compile Include="..\Src\SubsequentProcessPacket.cs">
+	<Compile Include="..\SubsequentProcessPacket.cs">
       <Link>SubsequentProcessPacket.cs</Link>
     </Compile>
     <Compile Remove="ApplicationController\**" />

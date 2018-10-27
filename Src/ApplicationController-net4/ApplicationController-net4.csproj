@@ -41,9 +41,9 @@
     <Reference Include="System" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\Src\ApplicationBase.cs" />
-    <Compile Include="..\Src\EventArgs.cs" />
-    <Compile Include="..\Src\SubsequentProcessPacket.cs" />
+    <Compile Include="..\ApplicationBase.cs" />
+    <Compile Include="..\EventArgs.cs" />
+    <Compile Include="..\SubsequentProcessPacket.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
