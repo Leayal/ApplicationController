@@ -102,8 +102,8 @@ namespace Leayal.ApplicationController
         {
             string[] tmp = Environment.GetCommandLineArgs(),
                 args = new string[tmp.Length - 1];
-            
-            Array.Copy(tmp, 1, args, 0, args.Length);
+            Buffer.BlockCopy(tmp, 1, args, 0, args.Length);
+            // Array.Copy(tmp, 1, args, 0, args.Length);
             tmp = null;
             this.OnRun(args);
             args = null;
