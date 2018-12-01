@@ -100,10 +100,10 @@ namespace Leayal.ApplicationController
         /// <summary>Sets up and starts the application model with command-line arguments from <see cref="Environment.GetCommandLineArgs"/></summary>
         public void Run()
         {
-            List<string> tmp = new List<string>(Environment.GetCommandLineArgs());
-            tmp.RemoveAt(0);
-
-            string[] args = tmp.ToArray();
+            string[] tmp = Environment.GetCommandLineArgs(),
+                args = new string[tmp.Length - 1];
+            
+            Array.Copy(tmp, 1, args, 0, args.Length);
             tmp = null;
             this.OnRun(args);
             args = null;
