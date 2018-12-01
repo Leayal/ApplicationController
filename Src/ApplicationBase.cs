@@ -71,7 +71,7 @@ namespace Leayal.ApplicationController
 
         /// <summary>Initializes a new instance of the <see cref="ApplicationBase"/> class in single-instance model with given instanceID</summary>
         /// <param name="instanceID">The unique ID for the application to check for</param>
-        /// <exception cref="ArgumentOutOfRangeException"><paramref name="instanceID"/> is longer than 260 characters</exception>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="instanceID"/> is longer than 200 characters</exception>
         protected ApplicationBase(string instanceID) : this(true, instanceID) { }
 
         /// <summary>Nope. Don't even use System.Reflection to invoke this method, please.</summary>
