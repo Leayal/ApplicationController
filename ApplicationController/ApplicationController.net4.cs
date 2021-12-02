@@ -1,4 +1,4 @@
-﻿#if NET48
+﻿#if NETFRAMEWORK || NETCOREAPP2_1
 using System;
 using System.IO;
 using System.Text;

@@ -7,8 +7,10 @@ namespace Test
     {
         static void Main(string[] args)
         {
-            Controller controller = new Controller();
-            controller.Run(args);
+            using (var controller = new Controller())
+            {
+                controller.Run(args);
+            }
         }
 
         class Controller : ApplicationController

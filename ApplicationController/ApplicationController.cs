@@ -1,29 +1,30 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
+using System.IO;
 using System.IO.Pipes;
 using System.Security.Principal;
-using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Leayal.ApplicationController
 {
     /// <summary>Provides controller to interact with the main frame of the whole single-instance application.</summary>
     /// <remarks>This class is single-instance-oriented.</remarks>
-    public abstract partial class ApplicationController
+    public abstract partial class ApplicationController : IDisposable
     {
         #region | Private Fields |
+#if !NETFRAMEWORK
+        private static readonly bool isOnWindows = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows);
+#endif
         private readonly Mutex mutex;
 
-#if NET48
-        private NamedPipeServerStream pipeServerStream;
-        private readonly CancellationTokenSource cancellationTokenSource;
-        private readonly Action<int, string[]> nextInstanceInvoker;
-#else
+#if NETCOREAPP3_1_OR_GREATER
         private NamedPipeServerStream? pipeServerStream;
         private readonly CancellationTokenSource? cancellationTokenSource;
         private readonly Action<int, string[]>? nextInstanceInvoker;
+#else
+        private NamedPipeServerStream pipeServerStream;
+        private readonly CancellationTokenSource cancellationTokenSource;
+        private readonly Action<int, string[]> nextInstanceInvoker;
 #endif
         #endregion
 
@@ -33,7 +34,7 @@ namespace Leayal.ApplicationController
 
         /// <summary>The unique name of the application instance.</summary>
         public readonly string UniqueIdentifier;
-        #endregion
+#endregion
 
         #region | Constructors |
         /// <summary>Constructor for all the derived classes to specify definite identifier</summary>
@@ -59,7 +60,7 @@ namespace Leayal.ApplicationController
         /// <summary>Default construct to quickly setup a single-instance application.</summary>
         /// <remarks>This shouldn't be used as the unique name identifier is not definite.</remarks>
         public ApplicationController() : this(GenerateAutoIdentifier()) { }
-        #endregion
+#endregion
 
         #region | Abstract Methods |
         /// <summary>When overriden, provides the startup logic when the instance is first launched.</summary>
@@ -77,66 +78,91 @@ namespace Leayal.ApplicationController
         #endregion
 
         #region | Public Methods |
-        /// <summary></summary>
-        /// <param name="args"></param>
+        /// <summary>Initialize and run the application with empty argument.</summary>
+        public void Run() => this.Run(Array.Empty<string>());
+
+        /// <summary>Initialize and run the application</summary>
+        /// <param name="args">The passing arguments to the application. Can't be null but can be empty.</param>
         public void Run(string[] args)
         {
-            if (this.IsFirstInstance)
+            try
             {
-                Task t;
-                if (this.pipeServerStream != null)
+                if (this.IsFirstInstance)
                 {
-                    t = Task.Factory.StartNew(this.WaitForNextInstance, TaskCreationOptions.LongRunning).Unwrap();
+                    Task t;
+                    if (this.pipeServerStream != null)
+                    {
+                        t = Task.Factory.StartNew(this.WaitForNextInstance, TaskCreationOptions.LongRunning).Unwrap();
+                    }
+                    else
+                    {
+                        t = Task.CompletedTask;
+                    }
+                    this.OnStartupFirstInstance(args ?? Array.Empty<string>());
+                    this.cancellationTokenSource?.Cancel();
+
+                    // Dirty one
+                    t.GetAwaiter().GetResult();
                 }
                 else
                 {
-                    t = Task.CompletedTask;
-                }
-                this.OnStartupFirstInstance(args ?? Array.Empty<string>());
-                this.cancellationTokenSource?.Cancel();
-                
-                // Dirty one
-                t.GetAwaiter().GetResult();
-            }
-            else
-            {
-                int procId;
-                using (var proc = System.Diagnostics.Process.GetCurrentProcess())
-                {
-                    procId = proc.Id;
-                }
-
-                var seg = CraftPacket(procId, args);
-                if (seg.Array != null)
-                {
-                    using (var clientPipe = new NamedPipeClientStream(".", this.UniqueIdentifier + "-pipe", PipeDirection.Out, PipeOptions.None, TokenImpersonationLevel.Impersonation))
+                    int procId;
+                    using (var proc = System.Diagnostics.Process.GetCurrentProcess())
                     {
-                        clientPipe.Connect(5000);
+                        procId = proc.Id;
+                    }
 
-                        var lenPacket = BitConverter.GetBytes(seg.Count);
-                        clientPipe.Write(lenPacket, 0, lenPacket.Length);
-                        clientPipe.Write(seg.Array, seg.Offset, seg.Count);
-
-                        if (clientPipe.IsConnected)
+                    var seg = CraftPacket(procId, args);
+                    if (seg.Array != null)
+                    {
+                        using (var clientPipe = this.CreateNewClientPipe())
                         {
-                            try
+                            clientPipe.Connect(5000);
+
+                            var lenPacket = BitConverter.GetBytes(seg.Count);
+                            clientPipe.Write(lenPacket, 0, lenPacket.Length);
+                            clientPipe.Write(seg.Array, seg.Offset, seg.Count);
+
+                            if (clientPipe.IsConnected)
                             {
-                                clientPipe.WaitForPipeDrain();
+                                try
+                                {
+#if NETFRAMEWORK
+                                    clientPipe.WaitForPipeDrain();
+#else
+                                if (isOnWindows)
+                                {
+#pragma warning disable CA1416 // Validate platform compatibility
+                                    clientPipe.WaitForPipeDrain();
+#pragma warning restore CA1416 // Validate platform compatibility
+                                }
+                                else
+                                {
+                                    clientPipe.ReadByte();
+                                }
+#endif
+                                }
+                                catch (ObjectDisposedException) { }
+                                catch (IOException) { }
                             }
-                            catch (ObjectDisposedException) { }
-                            catch (IOException) { }
                         }
                     }
                 }
             }
-
-            this.Dispose();
+            finally
+            {
+                this.Dispose();
+            }
         }
-        #endregion
+#endregion
 
         #region | Private Methods |
-#if NETCOREAPP3_1_OR_GREATER
+#if NETCOREAPP2_1_OR_GREATER
+#if NETCOREAPP2_1
+        private void InvokeNextInstance(object obj)
+#else
         private void InvokeNextInstance(object? obj)
+#endif
         {
             if (obj is NextInstanceData data)
             {
@@ -145,7 +171,37 @@ namespace Leayal.ApplicationController
         }
 #endif
 
-        NamedPipeServerStream CreateNewServerPipe() => new NamedPipeServerStream(this.UniqueIdentifier + "-pipe", PipeDirection.In, 2, PipeTransmissionMode.Message, PipeOptions.None);
+        private NamedPipeServerStream CreateNewServerPipe()
+        {
+#if NETFRAMEWORK
+            return new NamedPipeServerStream(this.UniqueIdentifier + "-pipe", PipeDirection.In, 1, PipeTransmissionMode.Byte, PipeOptions.None);
+#else
+            if (isOnWindows)
+            {
+                return new NamedPipeServerStream(this.UniqueIdentifier + "-pipe", PipeDirection.In, 1, PipeTransmissionMode.Byte, PipeOptions.None);
+            }
+            else
+            {
+                return new NamedPipeServerStream(this.UniqueIdentifier + "-pipe", PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.None);
+            }
+#endif
+        }
+
+        private NamedPipeClientStream CreateNewClientPipe()
+        {
+#if NETFRAMEWORK
+            return new NamedPipeClientStream(".", this.UniqueIdentifier + "-pipe", PipeDirection.Out, PipeOptions.None, TokenImpersonationLevel.Impersonation);
+#else
+            if (isOnWindows)
+            {
+                return new NamedPipeClientStream(".", this.UniqueIdentifier + "-pipe", PipeDirection.Out, PipeOptions.None, TokenImpersonationLevel.Impersonation);
+            }
+            else
+            {
+                return new NamedPipeClientStream(".", this.UniqueIdentifier + "-pipe", PipeDirection.InOut, PipeOptions.None, TokenImpersonationLevel.Impersonation);
+            }
+#endif
+        }
 
         private async Task WaitForNextInstance()
         {
@@ -169,10 +225,15 @@ namespace Leayal.ApplicationController
                         var data = ParsePacket(this.pipeServerStream, msgLength);
                         if (data != null)
                         {
-#if NET48
+#if NETFRAMEWORK
                             this.nextInstanceInvoker.BeginInvoke(data.ProcessId, data.Arguments, this.nextInstanceInvoker.EndInvoke, null);
 #else
                             await Task.Factory.StartNew(this.InvokeNextInstance, data);
+                            if (!isOnWindows)
+                            {
+                                oldPipe.WriteByte(1);
+                                oldPipe.Flush();
+                            }
 #endif
                         }
                     }
@@ -210,6 +271,6 @@ namespace Leayal.ApplicationController
         {
             this.Dispose(false);
         }
-        #endregion
+#endregion
     }
 }

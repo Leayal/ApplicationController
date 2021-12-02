@@ -9,7 +9,7 @@
     <Authors>Dramiel Leayal</Authors>
   </PropertyGroup>
 
-  <PropertyGroup Condition="'$(TargetFramework)' != 'net4.8'">
+  <PropertyGroup Condition="('$(TargetFramework)' != 'net4.8') AND ('$(TargetFramework)' != 'netcoreapp2.1')">
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
