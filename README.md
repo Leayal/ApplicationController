@@ -9,7 +9,7 @@ I don't think it's bug-free, though. So fire any bug reports if you want to.
 * Unlike [Microsoft.VisualBasic.ApplicationServices.WindowsFormsApplicationBase](https://docs.microsoft.com/en-us/dotnet/api/microsoft.visualbasic.applicationservices.windowsformsapplicationbase?view=netframework-4.0). The class has slightly different implementation:
   * Run(string[]) or Run() will then invoke either one of these abstract methods in the devired classes:
     * OnStartupFirstInstance(string[]) if it is the instance is launched for the first time.
-	* OnStartupNextInstance(string[]) if it is the instance is launched after the first time.
+	* OnStartupNextInstance(int, string[]) if it is the instance is launched after the first time.
   * This means you will implement Windows message loop by yourself.
 * Using:
   * The class use [NamedPipe](https://docs.microsoft.com/en-us/dotnet/standard/io/how-to-use-named-pipes-for-network-interprocess-communication) to pass the command-line arguments from subsequent instances to the first instance.
