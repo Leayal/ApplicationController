@@ -11,44 +11,33 @@ namespace Test
             controller.Run(args);
         }
 
-        class Controller : ApplicationBase
+        class Controller : ApplicationController
         {
-#if NETCOREAPP1_0 || NETCOREAPP1_1 || NETCOREAPP2_0 || NETCOREAPP2_1
-            public Controller() : base("My-Unique-ID") { }
-#else
-            public Controller() : base(true) { }
-#endif
+            public Controller() : base() { }
 
-            protected override void OnStartup(StartupEventArgs e)
+            protected override void OnStartupFirstInstance(string[] args)
             {
-                if (e.Arguments.Count == 0)
+                if (args.Length == 0)
                 {
                     Console.WriteLine("Main instance. Launched without args.");
                 }
                 else
                 {
-                    Console.WriteLine("Main instance. Launched with args: " + string.Join(";", e.Arguments));
+                    Console.WriteLine("Main instance. Launched with args: " + string.Join(";", args));
                 }
                 Console.WriteLine("Waiting for subsequent instance args. Press any key to exit.");
                 Console.ReadKey();
             }
 
-            protected override void OnStartupNextInstance(StartupNextInstanceEventArgs e)
+            protected override void OnStartupNextInstance(int processId, string[] args)
             {
-                if (e.Error != null)
+                if (args.Length == 0)
                 {
-                    Console.WriteLine("Error: " + e.Error.Message);
+                    Console.WriteLine("Subsequent Process launched without args.");
                 }
                 else
                 {
-                    if (e.Arguments.Count == 0)
-                    {
-                        Console.WriteLine("Subsequent Process launched without args.");
-                    }
-                    else
-                    {
-                        Console.WriteLine("Subsequent Process launched with args: " + string.Join(";", e.Arguments));
-                    }
+                    Console.WriteLine("Subsequent Process launched with args: " + string.Join(";", args));
                 }
             }
         }

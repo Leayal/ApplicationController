@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net4.8;net6.0;net5.0;netcoreapp3.1;netcoreapp2.1</TargetFrameworks>
+    <RootNamespace>Leayal.$(MSBuildProjectName.Replace(" ", "_"))</RootNamespace>
+    <GenerateDocumentationFile>True</GenerateDocumentationFile>
+    <ProduceReferenceAssembly>True</ProduceReferenceAssembly>
+    <ErrorReport>none</ErrorReport>
+    <Authors>Dramiel Leayal</Authors>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' != 'net4.8'">
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

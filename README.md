@@ -1,16 +1,18 @@
 # Application controller
-Provides a simple skeleton application to manage instances (Single-instance or multi-instance, support command-line).
-It's here because of the `It's not worth to include the whole System.VisualBasic reference just for single-instance application` reason.
-It's not bug-free, though.
+Provides a simple skeleton application to manage instances for single-instance application (support command-line application).
 
-## Caveat
-* The method executing order is different from [Microsoft.VisualBasic.ApplicationServices.WindowsFormsApplicationBase](https://docs.microsoft.com/en-us/dotnet/api/microsoft.visualbasic.applicationservices.windowsformsapplicationbase?view=netframework-4.0). The order of this class is:
-  1. Run(string[]) or Run()
-  2. OnRun(string[])
-  3. OnStartup(StartupEventArgs)
-  4. OnStartupNextInstance(StartupNextInstanceEventArgs) (in case the application is in single-instance and a subsequent instance has been launched after)
-* In case of single-instance:
-  * The class use [MemoryMappedFile](https://docs.microsoft.com/en-us/dotnet/api/system.io.memorymappedfiles.memorymappedfile?view=netframework-4.0) and [Mutexes](https://docs.microsoft.com/en-us/dotnet/standard/threading/mutexes) to lock and pass the command-line arguments from subsequent instances to the first instance.
+It's here because of the `It's not worth to include the whole System.VisualBasic reference just for single-instance application` reason.
+
+I don't think it's bug-free, though. So fire any bug reports if you want to.
+
+## Note
+* Unlike [Microsoft.VisualBasic.ApplicationServices.WindowsFormsApplicationBase](https://docs.microsoft.com/en-us/dotnet/api/microsoft.visualbasic.applicationservices.windowsformsapplicationbase?view=netframework-4.0). The class has slightly different implementation:
+  * Run(string[]) or Run() will then invoke either one of these abstract methods in the devired classes:
+    * OnStartupFirstInstance(string[]) if it is the instance is launched for the first time.
+	* OnStartupNextInstance(string[]) if it is the instance is launched after the first time.
+  * This means you will implement Windows message loop by yourself.
+* Using:
+  * The class use [NamedPipe](https://docs.microsoft.com/en-us/dotnet/standard/io/how-to-use-named-pipes-for-network-interprocess-communication) to pass the command-line arguments from subsequent instances to the first instance.
   * The class use [Mutexes](https://docs.microsoft.com/en-us/dotnet/standard/threading/mutexes) to determine the first instance and subsequent instances.
 
 ## Example:
@@ -33,39 +35,38 @@ class Program
     }
 
     // Derived class from the base class
-    class Controller : ApplicationBase
+    class Controller : ApplicationController
     {
-        // Invoke constructor ApplicationBase(string)
-        // ApplicationBase("My-unique-ID") means create single-instance application model with the given instance ID string, which is "My-unique-ID".
-        public Controller() : base("My-unique-ID")
-        {                
-        }
+        public Controller() : base() { }
 
-        // Override ApplicationBase.Startup(StartupEventArgs e)
-        // Just for example: Print the line and wait for any key to exit
-        protected override void OnStartup(StartupEventArgs e)
+        protected override void OnStartupFirstInstance(string[] args)
         {
-            Console.WriteLine("Main instance. Waiting for next instance args.");
-            Console.ReadKey();
-        }
-
-        // Override OnStartupNextInstance(StartupNextInstanceEventArgs e)
-        // Just for example: a subsequent instance has been launched. This method will be invoked with the command-line argument(s) of that subsequent instance.
-        // REMARK: this method will never be invoked if the application is not in single-instance model.
-        protected override void OnStartupNextInstance(StartupNextInstanceEventArgs e)
-        {
-            if (e.Error != null)
+            if (args.Length == 0)
             {
-                Console.WriteLine("Error: " + e.Error.Message);                
+                Console.WriteLine("Main instance. Launched without args.");
             }
             else
             {
-                Console.WriteLine("Args: " + string.Join(";", e.Arguments));
+                Console.WriteLine("Main instance. Launched with args: " + string.Join(";", args));
+            }
+            Console.WriteLine("Waiting for subsequent instance args. Press any key to exit.");
+            Console.ReadKey();
+        }
+
+        protected override void OnStartupNextInstance(int processId, string[] args)
+        {
+            if (args.Length == 0)
+            {
+                Console.WriteLine("Subsequent Process launched without args.");
+            }
+            else
+            {
+                Console.WriteLine("Subsequent Process launched with args: " + string.Join(";", args));
             }
         }
     }
 }
 ```
 
-## Unsure how it works so that you can use it or not?
-Please browse the source code here: [ApplicationBase.cs](/Src/ApplicationBase.cs)
+# Developer Note
+As of writing this project. I'm using `Visual Studio 2022`.
