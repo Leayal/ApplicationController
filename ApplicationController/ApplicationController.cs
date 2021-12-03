@@ -28,7 +28,7 @@ namespace Leayal.ApplicationController
 #endif
         #endregion
 
-        #region | Private Fields |
+        #region | Public Fields |
         /// <summary>The boolean determines whether the current application instance is the first instance or not.</summary>
         public readonly bool IsFirstInstance;
 
