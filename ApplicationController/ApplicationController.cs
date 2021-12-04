@@ -19,11 +19,9 @@ namespace Leayal.ApplicationController
 
 #if NETCOREAPP3_1_OR_GREATER
         private NamedPipeServerStream? pipeServerStream;
-        private readonly CancellationTokenSource? cancellationTokenSource;
         private readonly Action<int, string[]>? nextInstanceInvoker;
 #else
         private NamedPipeServerStream pipeServerStream;
-        private readonly CancellationTokenSource cancellationTokenSource;
         private readonly Action<int, string[]> nextInstanceInvoker;
 #endif
         #endregion
@@ -46,13 +44,11 @@ namespace Leayal.ApplicationController
             if (this.IsFirstInstance)
             {
                 this.nextInstanceInvoker = this.OnStartupNextInstance;
-                this.cancellationTokenSource = new CancellationTokenSource();
                 this.pipeServerStream = this.CreateNewServerPipe();
             }
             else
             {
                 this.nextInstanceInvoker = null;
-                this.cancellationTokenSource = null;
                 this.pipeServerStream = null;
             }
         }
@@ -89,20 +85,32 @@ namespace Leayal.ApplicationController
             {
                 if (this.IsFirstInstance)
                 {
-                    Task t;
-                    if (this.pipeServerStream != null)
+                    using (var cancellationTokenSource = new CancellationTokenSource())
                     {
-                        t = Task.Factory.StartNew(this.WaitForNextInstance, TaskCreationOptions.LongRunning).Unwrap();
-                    }
-                    else
-                    {
-                        t = Task.CompletedTask;
-                    }
-                    this.OnStartupFirstInstance(args ?? Array.Empty<string>());
-                    this.cancellationTokenSource?.Cancel();
+                        Task t;
+                        if (this.pipeServerStream != null)
+                        {
+                            t = Task.Factory.StartNew(this.WaitForNextInstance, cancellationTokenSource, TaskCreationOptions.LongRunning).Unwrap();
+                        }
+                        else
+                        {
+                            t = Task.CompletedTask;
+                        }
+                        this.OnStartupFirstInstance(args ?? Array.Empty<string>());
+                        cancellationTokenSource.Cancel();
 
-                    // Dirty one
-                    t.GetAwaiter().GetResult();
+                        if (this.pipeServerStream != null)
+                        {
+                            if (this.pipeServerStream.IsConnected)
+                            {
+                                this.pipeServerStream.Disconnect();
+                            }
+                            this.pipeServerStream.Dispose();
+                        }
+
+                        // Dirty one
+                        t.GetAwaiter().GetResult();
+                    }
                 }
                 else
                 {
@@ -203,30 +211,32 @@ namespace Leayal.ApplicationController
 #endif
         }
 
-        private async Task WaitForNextInstance()
+        private async Task WaitForNextInstance(object obj)
         {
-            if (this.pipeServerStream == null || this.cancellationTokenSource == null || this.nextInstanceInvoker == null) return;
-            var token = this.cancellationTokenSource.Token;
-            while (true)
+            if (this.pipeServerStream == null || this.nextInstanceInvoker == null) return;
+            if (obj is CancellationTokenSource cancellationTokenSource)
             {
-                await this.pipeServerStream.WaitForConnectionAsync(token);
-                if (token.IsCancellationRequested)
+                var token = cancellationTokenSource.Token;
+                while (true)
                 {
-                    break;
-                }
-                else
-                {
-                    var oldPipe = this.pipeServerStream;
-                    var len = new byte[4];
-                    var read = StreamDrain(oldPipe, len, 0, len.Length);
-                    if (read == 4)
+                    await WaitForConnectionAsyncThatActuallyReturnWhenCancelled(this.pipeServerStream, token);
+                    if (token.IsCancellationRequested)
                     {
-                        var msgLength = BitConverter.ToInt32(len, 0);
-                        var data = ParsePacket(this.pipeServerStream, msgLength);
-                        if (data != null)
+                        break;
+                    }
+                    else
+                    {
+                        var oldPipe = this.pipeServerStream;
+                        var len = new byte[4];
+                        var read = StreamDrain(oldPipe, len, 0, len.Length);
+                        if (read == 4)
                         {
+                            var msgLength = BitConverter.ToInt32(len, 0);
+                            var data = ParsePacket(this.pipeServerStream, msgLength);
+                            if (data != null)
+                            {
 #if NETFRAMEWORK
-                            this.nextInstanceInvoker.BeginInvoke(data.ProcessId, data.Arguments, this.nextInstanceInvoker.EndInvoke, null);
+                                this.nextInstanceInvoker.BeginInvoke(data.ProcessId, data.Arguments, this.nextInstanceInvoker.EndInvoke, null);
 #else
                             await Task.Factory.StartNew(this.InvokeNextInstance, data);
                             if (!isOnWindows)
@@ -235,17 +245,18 @@ namespace Leayal.ApplicationController
                                 oldPipe.Flush();
                             }
 #endif
+                            }
                         }
+                        oldPipe.Disconnect();
+                        oldPipe.Dispose();
+                        this.pipeServerStream = this.CreateNewServerPipe();
                     }
-                    oldPipe.Disconnect();
-                    oldPipe.Dispose();
-                    this.pipeServerStream = this.CreateNewServerPipe();
                 }
             }
         }
-        #endregion
+#endregion
 
-        #region | Dispose Methods |
+    #region | Dispose Methods |
         /// <summary>Clean up all resources and handles allocated by this instance.</summary>
         public void Dispose()
         {
@@ -261,7 +272,6 @@ namespace Leayal.ApplicationController
             {
                 this.mutex.ReleaseMutex();
                 this.pipeServerStream?.Dispose();
-                this.cancellationTokenSource?.Dispose();
             }
             this.mutex.Dispose();
         }

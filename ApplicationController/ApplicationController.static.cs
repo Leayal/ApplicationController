@@ -1,6 +1,9 @@
 ﻿using System;
 using System.Text;
 using System.Diagnostics;
+using System.Threading.Tasks;
+using System.IO.Pipes;
+using System.Threading;
 
 namespace Leayal.ApplicationController
 {
@@ -49,6 +52,44 @@ namespace Leayal.ApplicationController
                         hex.AppendFormat("{0:x2}", b);
                     return hex.ToString();
 #endif
+                }
+            }
+        }
+
+#if NET5_0_OR_GREATER
+#else
+        private class TaskCompletionSourceWithoutArgs : TaskCompletionSource<bool>
+        {
+            public void Yeet() => this.SetResult(true);
+        }
+#endif
+
+        private static async Task WaitForConnectionAsyncThatActuallyReturnWhenCancelled(NamedPipeServerStream pipe, CancellationToken token)
+        {
+#if NET5_0_OR_GREATER
+            var tTermination = new TaskCompletionSource();
+            token.Register(tTermination.SetResult);
+#else
+            var tTermination = new TaskCompletionSourceWithoutArgs();
+            token.Register(tTermination.Yeet);
+#endif
+            var tCancel = tTermination.Task;
+            var t_pipe = pipe.WaitForConnectionAsync(token);
+            var t = await Task.WhenAny(t_pipe, tCancel);
+            if (tCancel == t)
+            {
+                if (t_pipe.IsCompleted)
+                {
+                    t_pipe.Dispose();
+                }
+            }
+            else
+            {
+                tTermination.SetCanceled();
+                t_pipe.Dispose();
+                if (tCancel.IsCompleted)
+                {
+                    tCancel.Dispose();
                 }
             }
         }
