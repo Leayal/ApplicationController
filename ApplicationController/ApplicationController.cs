@@ -32,7 +32,7 @@ namespace Leayal.ApplicationController
 
         /// <summary>The unique name of the application instance.</summary>
         public readonly string UniqueIdentifier;
-#endregion
+        #endregion
 
         #region | Constructors |
         /// <summary>Constructor for all the derived classes to specify definite identifier</summary>
@@ -56,7 +56,7 @@ namespace Leayal.ApplicationController
         /// <summary>Default construct to quickly setup a single-instance application.</summary>
         /// <remarks>This shouldn't be used as the unique name identifier is not definite.</remarks>
         public ApplicationController() : this(GenerateAutoIdentifier()) { }
-#endregion
+        #endregion
 
         #region | Abstract Methods |
         /// <summary>When overriden, provides the startup logic when the instance is first launched.</summary>
@@ -71,6 +71,54 @@ namespace Leayal.ApplicationController
         /// <para>This method may be called on a different thread instead of the application main thread.</para>
         /// </remarks>
         protected abstract void OnStartupNextInstance(int processId, string[] args);
+        #endregion
+
+        #region | Virtual Methods |
+        /// <summary>The execution on the subsequent instances.</summary>
+        /// <param name="processId">The process ID of the process which is running the subsequent instance.</param>
+        /// <param name="args">Arguments which will be passed to the first instance.</param>
+        /// <exception cref="ArgumentNullException"><paramref name="args"/> is null</exception>
+        /// <remarks>By default implementation, this method is to send the <paramref name="args"/> to the first instance.</remarks>
+        protected virtual void OnRemoteProcessExecution(int processId, string[] args)
+        {
+            if (args == null) throw new ArgumentNullException(nameof(args));
+
+            var seg = CraftPacket(processId, args);
+            if (seg.Array != null)
+            {
+                using (var clientPipe = this.CreateNewClientPipe())
+                {
+                    clientPipe.Connect(5000);
+
+                    var lenPacket = BitConverter.GetBytes(seg.Count);
+                    clientPipe.Write(lenPacket, 0, lenPacket.Length);
+                    clientPipe.Write(seg.Array, seg.Offset, seg.Count);
+
+                    if (clientPipe.IsConnected)
+                    {
+                        try
+                        {
+#if NETFRAMEWORK
+                            clientPipe.WaitForPipeDrain();
+#else
+                                if (isOnWindows)
+                                {
+#pragma warning disable CA1416 // Validate platform compatibility
+                                    clientPipe.WaitForPipeDrain();
+#pragma warning restore CA1416 // Validate platform compatibility
+                                }
+                                else
+                                {
+                                    clientPipe.ReadByte();
+                                }
+#endif
+                        }
+                        catch (ObjectDisposedException) { }
+                        catch (IOException) { }
+                    }
+                }
+            }
+        }
         #endregion
 
         #region | Public Methods |
@@ -119,42 +167,7 @@ namespace Leayal.ApplicationController
                     {
                         procId = proc.Id;
                     }
-
-                    var seg = CraftPacket(procId, args);
-                    if (seg.Array != null)
-                    {
-                        using (var clientPipe = this.CreateNewClientPipe())
-                        {
-                            clientPipe.Connect(5000);
-
-                            var lenPacket = BitConverter.GetBytes(seg.Count);
-                            clientPipe.Write(lenPacket, 0, lenPacket.Length);
-                            clientPipe.Write(seg.Array, seg.Offset, seg.Count);
-
-                            if (clientPipe.IsConnected)
-                            {
-                                try
-                                {
-#if NETFRAMEWORK
-                                    clientPipe.WaitForPipeDrain();
-#else
-                                if (isOnWindows)
-                                {
-#pragma warning disable CA1416 // Validate platform compatibility
-                                    clientPipe.WaitForPipeDrain();
-#pragma warning restore CA1416 // Validate platform compatibility
-                                }
-                                else
-                                {
-                                    clientPipe.ReadByte();
-                                }
-#endif
-                                }
-                                catch (ObjectDisposedException) { }
-                                catch (IOException) { }
-                            }
-                        }
-                    }
+                    this.OnRemoteProcessExecution(procId, args);
                 }
             }
             finally
@@ -162,7 +175,7 @@ namespace Leayal.ApplicationController
                 this.Dispose();
             }
         }
-#endregion
+        #endregion
 
         #region | Private Methods |
 #if NETCOREAPP2_1_OR_GREATER
@@ -254,9 +267,9 @@ namespace Leayal.ApplicationController
                 }
             }
         }
-#endregion
+        #endregion
 
-    #region | Dispose Methods |
+        #region | Dispose Methods |
         /// <summary>Clean up all resources and handles allocated by this instance.</summary>
         public void Dispose()
         {
@@ -281,6 +294,6 @@ namespace Leayal.ApplicationController
         {
             this.Dispose(false);
         }
-#endregion
+        #endregion
     }
 }
